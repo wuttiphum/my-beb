@@ -2,7 +2,7 @@
 
 Browser: headed Chromium through Playwright CLI (IAB unavailable).
 Reference: the current python/heart.py on the original Mac, with Tk scaling
-1.000750469043152. Python source was not modified.
+1.000750469043152. The later notch fix updates clipping in both Python and web.
 
 ## Reproduced problems
 
@@ -63,14 +63,35 @@ The interior now uses the native 1000x900 layout at a 9-point reference size
 for all viewports. Word widths, line spacing, and pen distances are computed in
 heart coordinates; font size is 9*unit with no integer rounding. This replaces
 the viewport-dependent counts in the historical table above. The expected
-current count is 193 words at every viewport, with the same normalized word
+current count is 195 words at every viewport, with the same normalized word
 positions, order, writing path and timing. Heart projection still fits the
 viewport, and small screens retain their existing fit and touch controls.
 
 Verified fixed layout at 1000x900, 1512x950, 1512x840, 1920x1080,
 1280x720, 768x1024, 600x840, 599x840, 390x844, 320x568 and 844x390.
-All had identical normalized word arrays (193 words, 20 languages), a constant
+Before the notch fix, all had identical normalized word arrays (193 words, 20 languages), a constant
 9-point reference font ratio, and the same pen position at t=20. Resizing during
 playback preserved progress. Fullscreen entry through the real button and exit
 with Escape preserved both layout and progress; Escape is handled even while
 that button retains focus.
+
+## Blank row below the notch — reproduced and fixed
+
+The original interval clipping chose only the longest overlap. At reference
+y=4.824138145805872 the row center spans the full heart, while the top of its
+text band splits into two lobes. Picking one overlap dropped the entire left
+region: 0 left words versus 8 right words. The fixed clipper retains every safe
+intersection; that row now contains 8 left words and 7 right words.
+
+`node --test tests/heart-layout.test.mjs` failed on this exact blank band before
+the fix and now passes four checks: both lobes filled, no wide usable region
+skipped, every word contained by the heart, and no overlapping words/all 20
+languages. The browser uses this tested layout module. The Python reference
+layout now also contains 195 words at 1000x900.
+
+After the fix, checked 195 words with 8 left/7 right at the notch row in all
+11 viewport sizes above, plus actual fullscreen entry/exit. Normalized layouts
+remain identical. All 20 languages, writing/galaxy/name/return/finale, pause,
+resume and the replay button passed. The web matches the corrected Python
+reference layout at 1000x900. Screenshots before/after confirm the skipped
+left band is filled. Regression checks also verify text stays inside the shape.

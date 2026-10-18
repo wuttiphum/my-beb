@@ -327,33 +327,33 @@ class LoveUniverse:
         y = max(py for _, py in self.outline) - half_height - .5
         while y > -17 + half_height + .5:
             for left, right in spans(y):
-                # Check the top and bottom too, so text stays within the border.
+                # At the notch the row can split into two lobes. Keep all
+                # safe intersections rather than dropping the shorter lobe.
+                segments = [(left, right)]
                 for edge_y in (y - half_height, y + half_height):
-                    overlap = [(max(left, a), min(right, b)) for a, b in spans(edge_y)
-                               if max(left, a) < min(right, b)]
-                    if not overlap:
-                        left = right
-                        break
-                    left, right = max(overlap, key=lambda pair: pair[1] - pair[0])
-                x = left + .55
-                right -= .55
-                while x < right:
-                    phrase = PHRASES[phrase_index % len(PHRASES)]
-                    want_phrase = len(self.fill_words) % 2 == 0
-                    value = phrase if want_phrase else names[name_index % len(names)]
-                    width = font.measure(value) / scale
-                    if x + width > right:
-                        value = "อัง" if name_index % 2 == 0 else "Ang"
+                    segments = [(max(left, a), min(right, b))
+                                for left, right in segments for a, b in spans(edge_y)
+                                if max(left, a) < min(right, b)]
+                for left, right in segments:
+                    x = left + .55
+                    right -= .55
+                    while x < right:
+                        phrase = PHRASES[phrase_index % len(PHRASES)]
+                        want_phrase = len(self.fill_words) % 2 == 0
+                        value = phrase if want_phrase else names[name_index % len(names)]
                         width = font.measure(value) / scale
-                    if x + width > right:
-                        break
-                    self.fill_words.append((x + width / 2, y, value))
-                    self.fill_widths.append(width)
-                    if value == phrase:
-                        phrase_index += 1
-                    else:
-                        name_index += 1
-                    x += width + .45
+                        if x + width > right:
+                            value = "อัง" if name_index % 2 == 0 else "Ang"
+                            width = font.measure(value) / scale
+                        if x + width > right:
+                            break
+                        self.fill_words.append((x + width / 2, y, value))
+                        self.fill_widths.append(width)
+                        if value == phrase:
+                            phrase_index += 1
+                        else:
+                            name_index += 1
+                        x += width + .45
             y -= half_height * 2 + .28
 
         # Measure a continuous pen path, including travel between lines.

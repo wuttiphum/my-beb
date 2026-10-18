@@ -49,3 +49,14 @@ After changing fixed text, regenerate the artwork on the original Mac:
 
 Also update `dist/assets/animation-data.json` when animation copy changes.
 See `QA.md` for the native layout comparison and browser verification.
+
+## Layout regression checks
+
+```sh
+node --test tests/heart-layout.test.mjs
+```
+
+These checks use the actual heart geometry and exported font measurements to
+catch skipped interior regions, words crossing the notch or border, overlap,
+and missing languages. The clipper fills both lobes when a text band splits
+at the notch. It keeps the same fixed layout when the viewport changes.

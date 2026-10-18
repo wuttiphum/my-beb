@@ -1,3 +1,4 @@
+import {packHeartWords} from './heart-layout.mjs?v=d5e3f558c8';
 const $=s=>document.querySelector(s),canvas=$('#scene'),ctx=canvas.getContext('2d',{alpha:true});
 const TAU=Math.PI*2,BG='#080611',DRAW=14,FILL_START=14.5,FILL=10,FILL_END=FILL_START+FILL,BURST=FILL_END+1.5,GATHER=BURST+8,GATHER_END=GATHER+4,RETURN=GATHER_END+7,RETURN_END=RETURN+6,END=RETURN_END+6;
 const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x)),ease=x=>{x=clamp(x);return x*x*(3-2*x)},mix=(a,b,t)=>a+(b-a)*t;
@@ -29,7 +30,6 @@ function text(x,y,s,size,color,alpha=1,role='body',width=null,live=false){
 function colorMix(a,b,t){let ca=a.match(/\w\w/g).map(x=>parseInt(x,16)),cb=b.match(/\w\w/g).map(x=>parseInt(x,16));return '#'+ca.map((x,i)=>Math.round(mix(x,cb[i],t)).toString(16).padStart(2,'0')).join('')}
 function fillFont(){return 9*u}
 function dot(x,y,r,color,alpha=1){if(alpha<=.001)return;ctx.globalAlpha=clamp(alpha);ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,y,Math.max(.4,r),0,TAU);ctx.fill();ctx.globalAlpha=1}
-function spans(y){let cross=[];for(let i=6;i<curve.length;i+=6){let [x1,y1]=curve[i-6],[x2,y2]=curve[i];if((y1<=y&&y<y2)||(y2<=y&&y<y1))cross.push(x1+(y-y1)*(x2-x1)/(y2-y1))}cross.sort((a,b)=>a-b);let out=[];for(let i=0;i+1<cross.length;i+=2)out.push([cross[i],cross[i+1]]);return out}
 function resize(){
  let box=canvas.getBoundingClientRect();W=Math.max(1,box.width);H=Math.max(1,box.height);let dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);lastDPR=dpr;
  // The desktop stage is the entire window, exactly as in heart.py.
@@ -40,8 +40,8 @@ function resize(){
 function prepare(){outline=[];words=[];particles=[];const count=data.nameLetters.length*4;for(let i=0;i<count;i++){let d=i/count*distances.at(-1),idx=Math.min(curve.length-1,upper(distances,d));outline.push({x:curve[idx][0],y:curve[idx][1],value:data.nameLetters[i%data.nameLetters.length]})}
  // Pack in the original 1000x900 heart coordinates. Viewport changes
  // scale this same lettering and pen path instead of reflowing the words.
- const size=fillFont(),metric=typography.fillMetrics['9'],measure=value=>metric.widths[value]/18.5,half=metric.linespace/18.5/2;let pi=0,ni=0;const names=['อัง','Ang','Nathaiinee Samoeton','Ang','อัง'];
- for(let y=Math.max(...curve.filter((_,i)=>i%6===0).map(p=>p[1]))-half-.5;y>-17+half+.5;y-=half*2+.28){for(let [left,right]of spans(y)){for(let ey of[y-half,y+half]){let overlaps=spans(ey).map(([a,b])=>[Math.max(a,left),Math.min(b,right)]).filter(([a,b])=>a<b);if(!overlaps.length){left=right;break}overlaps.sort((a,b)=>(b[1]-b[0])-(a[1]-a[0]));[left,right]=overlaps[0]}let x=left+.55;right-=.55;while(x<right){let phrase=data.phrases[pi%data.phrases.length],value=words.length%2===0?phrase:names[ni%names.length],width=measure(value);if(x+width>right){value=ni%2?'Ang':'อัง';width=measure(value)}if(x+width>right)break;words.push({x:x+width/2,y,value,width,size});if(value===phrase)pi++;else ni++;x+=width+.45}}}
+ const size=fillFont(),metric=typography.fillMetrics['9'],measure=value=>metric.widths[value]/18.5;
+ words=packHeartWords({outline:curve.filter((_,i)=>i%6===0),metrics:metric,phrases:data.phrases,names:['อัง','Ang','Nathaiinee Samoeton','Ang','อัง']}).map(word=>({...word,size}));
  let distance=0,previous=null;for(let word of words){let left=word.x-word.width/2;if(previous)distance+=Math.hypot(left-previous[0],word.y-previous[1]);word.start=distance;distance+=word.width;word.end=distance;previous=[left+word.width,word.y];let prefix='';word.prefix=clusters(word.value).map(c=>{prefix+=c;return{value:prefix,width:measure(prefix)}})}fillLength=distance;
  let sources=[];outline.forEach((p,index)=>{if(p.value.trim())sources.push({...p,size:(W<600||H<600?13*u:Math.max(7,Math.floor(13*u))),kind:'outline',index})});words.forEach((p,index)=>{let priorWidth=0,prior='';for(let prefix of p.prefix){let value=prefix.value.slice(prior.length);if(value.trim())sources.push({x:p.x-p.width/2+(priorWidth+prefix.width)/2,y:p.y,value,size,kind:'word',index});prior=prefix.value;priorWidth=prefix.width}});
  const step=Math.max(1,Math.ceil(sources.length/(W<600?430:560))),selected=sources.filter((_,i)=>i%step===0),r=rng(81);selected.forEach((p,i)=>{let idx=Math.round(i*(data.nameTargets.length-1)/Math.max(1,selected.length-1)),target=data.nameTargets[idx];particles.push({...p,tx:(target[0]-151)*1.5+(r()-.5)*1.4,ty:(target[1]-41)*1.8+(r()-.5)*1.4,r:.07+r()*.86,j:.17+r()*.61,phase:r()*TAU})})
