@@ -12,12 +12,17 @@ const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 let stars=[],dust=[];
 // Match Python's combining-mark clusters, including Thai vowels and tone marks.
 function clusters(s){return Array.from(s).reduce((a,c)=>{if(a.length&&/\p{Mark}/u.test(c))a[a.length-1]+=c;else a.push(c);return a},[])}
-const tintedText=new Map();
-function text(x,y,s,size,color,alpha=1,role='body',width=null){
+const tintedText=new Map(),liveTintedText=new Map();
+function text(x,y,s,size,color,alpha=1,role='body',width=null,live=false){
  if(alpha<=.001||!s.trim())return;
  const cell=typography.cells[`${role}:${s}`];if(!cell)return;
- const key=`${role}:${s}:${color}`;let image=tintedText.get(key);
- if(!image){image=document.createElement('canvas');image.width=cell[2];image.height=cell[3];let c=image.getContext('2d');c.drawImage(textAtlas,cell[0],cell[1],cell[2],cell[3],0,0,cell[2],cell[3]);c.globalCompositeOperation='source-in';c.fillStyle=color;c.fillRect(0,0,image.width,image.height);if(tintedText.size>=768)tintedText.delete(tintedText.keys().next().value);tintedText.set(key,image)}
+ // Reuse canvases for the moving highlight rather than caching a new image
+ // for every shade on every frame. Finished text keeps its stable tint cache.
+ const cache=live?liveTintedText:tintedText,key=`${role}:${s}${live?'':':'+color}`;
+ let entry=cache.get(key);
+ if(!entry){const image=document.createElement('canvas');image.width=cell[2];image.height=cell[3];entry={image,color:null};if(cache.size>=(live?96:768))cache.delete(cache.keys().next().value);cache.set(key,entry)}
+ const image=entry.image;
+ if(entry.color!==color){let c=image.getContext('2d');c.globalCompositeOperation='source-over';c.clearRect(0,0,image.width,image.height);c.drawImage(textAtlas,cell[0],cell[1],cell[2],cell[3],0,0,cell[2],cell[3]);c.globalCompositeOperation='source-in';c.fillStyle=color;c.fillRect(0,0,image.width,image.height);entry.color=color}
  const ratio=size/cell[4]/typography.density,w=image.width*ratio*(width===null?1:width/(cell[5]*size/cell[4])),h=image.height*ratio;
  ctx.globalAlpha=clamp(alpha);ctx.drawImage(image,x-w/2,y-h/2,w,h);ctx.globalAlpha=1;
 }
@@ -44,12 +49,53 @@ function delay(kind,index){if(kind==='outline')return .015+.10*index/outline.len
 function landed(kind,index){return ease(((t-RETURN)/(RETURN_END-RETURN)-delay(kind,index)-.6)/.1)}
 function fillProgress(){let e=clamp(t-FILL_START,0,FILL),r=1.2,d=FILL-r;return e<r?e*e/(2*r*d):e>FILL-r?1-(FILL-e)**2/(2*r*d):(e-r/2)/d}
 function path(points,color,width,alpha=1){if(alpha<=.001||points.length<2)return;ctx.globalAlpha=clamp(alpha);ctx.strokeStyle=color;ctx.lineWidth=width;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.stroke();ctx.globalAlpha=1}
+function drawHeartFill(beat,before){
+ const fill=fillProgress()*fillLength;
+ const visible=t>=FILL_START?upper(words.map(p=>p.start),fill):0;
+ for(let i=0;i<visible;i++){
+  const p=words[i],landing=t>=RETURN?landed('word',i):before;
+  if(landing<=0)continue;
+  const age=(fill-p.start)*FILL/Math.max(1,fillLength)+Math.max(0,t-FILL_END);
+  const alpha=landing*ease(age/.25),highlight=Math.exp(-Math.max(0,age)*4);
+  const pink=(1+Math.sin(p.y*.15+p.x*.07))/2;
+  const baseColor=colorMix('#ed4d9e','#ffb3db',pink),live=highlight>.001;
+  const color=live?colorMix(baseColor,'#ffe3f3',highlight):baseColor;
+  if(fill>=p.end){text(cx+p.x*scale*beat,cy-p.y*scale*beat,p.value,p.size,color,alpha,'fill',p.width*scale,live)}
+  else{
+   const written=Math.max(0,fill-p.start),j=upper(p.prefix.map(x=>x.width),written),left=p.x-p.width/2;
+   if(j<p.prefix.length){const next=p.prefix[j],previous=j?p.prefix[j-1].width:0,fade=ease((written-previous)/Math.max(.0001,next.width-previous));text(cx+(left+next.width/2)*scale*beat,cy-p.y*scale*beat,next.value,p.size,color,alpha*fade,'fill',next.width*scale,live)}
+   if(j){const prefix=p.prefix[j-1];text(cx+(left+prefix.width/2)*scale*beat,cy-p.y*scale*beat,prefix.value,p.size,color,alpha,'fill',prefix.width*scale,live)}
+  }
+ }
+ if(reduce)return;
+ // The original three-layer pen glow dims while travelling between lines.
+ if(t>=FILL_START&&t<FILL_END&&words.length){
+  const i=Math.min(words.length-1,upper(words.map(p=>p.end),fill)),p=words[i];
+  let x=p.x-p.width/2,y=p.y;const writing=fill>=p.start;
+  if(writing)x+=fill-p.start;
+  else if(i){const previous=words[i-1],q=ease((fill-previous.end)/Math.max(.0001,p.start-previous.end));x=mix(previous.x+previous.width/2,x,q);y=mix(previous.y,y,q)}
+  for(const[radius,strength]of[[11,.10],[6,.24],[2,1]])dot(cx+x*scale*beat,cy-y*scale*beat,radius*u,'#ffd1ec',strength*(writing?1:.2)*before);
+ }
+ // Match Tk's last twelve words: three drifting sparks and one star-shaped
+ // glint per word. Their age comes from the pen distance, so pause and replay
+ // freeze/reset the effect without extra timers or persistent particles.
+ for(let i=Math.max(0,visible-12);i<visible;i++){
+  const p=words[i],age=(fill-p.start)*FILL/Math.max(1,fillLength)+Math.max(0,t-FILL_END);
+  if(age<0||age>=.75)continue;
+  for(let ray=0;ray<3;ray++){
+   const angle=i*2.399+ray*TAU/3,distance=(4+28*age)*u;
+   const x=cx+p.x*scale*beat+Math.cos(angle)*distance,y=cy-p.y*scale*beat+Math.sin(angle)*distance-age*13*u;
+   const alpha=(1-age/.75)*.85*before,radius=(1.2+.6*Math.sin(i+ray))*u;
+   dot(x,y,radius,'#ffd9f0',alpha);
+   if(ray===0){const arm=3*u*(1-age/.75);path([[x-arm,y],[x+arm,y]],'#ffd9f0',1,alpha);path([[x,y-arm],[x,y+arm]],'#ffd9f0',1,alpha)}
+  }
+ }
+}
 function drawHeart(){const before=1-ease((t-BURST)/.65),late=ease((t-RETURN_END+.5)/.5),decor=Math.max(before,late);if(decor<=0&&t<RETURN)return;const intro=ease(t/DRAW),bt=Math.max(0,t-DRAW),ph=(bt%2.4)/2.4,pulse=(Math.exp(-(((ph-.12)/.055)**2))+.55*Math.exp(-(((ph-.27)/.07)**2)))*ease(bt/1.2),final=ease((t-RETURN_END-.6)/1.8);let beat=1+(.045*(1-ease((t-FILL_START)/1.2))+.012*ease((t-FILL_START)/1.2)+.010*final)*pulse+.085*Math.exp(-(((t-BURST+.18)/.17)**2));if(t>=RETURN)beat=1+(.012+.010*final)*pulse*ease((t-RETURN_END)/1.2);if(reduce)beat=1;
- if(decor>0){for(let p of dust)dot(cx+(p.x+Math.sin(t*1.3+p.p)*.1)*scale*beat,cy-p.y*scale*beat,p.r*u*(1+pulse*.25),p.r>1.7?'#ffb8e0':'#ff4b93',(.08+.20*(.5+.5*Math.sin(p.p+t*1.7)))*clamp((t-1.5)/2)*decor);let points=curve.slice(0,Math.max(2,Math.ceil(intro*curve.length))).map(([x,y])=>[cx+x*scale*beat,cy-y*scale*beat]);path(points,'#150a1b',Math.max(.5,8*u),decor);path(points,'#39102e',Math.max(.5,u),decor);if(t>=DRAW&&!reduce){for(let j=0;j<2;j++){let age=(bt+j*2.4)%4.8/4.8;path(curve.filter((_,i)=>i%5===0).map(([x,y])=>[cx+x*scale*(1+age*.5),cy-y*scale*(1+age*.5)]),'#ef6ca7',.7,.10*(1-age)*decor)}}}
+ if(decor>0){for(let p of dust)dot(cx+(p.x+Math.sin(t*1.3+p.p)*.1)*scale*beat,cy-p.y*scale*beat,p.r*u*(1+pulse*.25),p.r>1.7?'#ffb8e0':'#ff4b93',(.08+.20*(.5+.5*Math.sin(p.p+t*1.7)))*clamp((t-1.5)/2)*decor);let points=curve.slice(0,Math.max(2,Math.ceil(intro*curve.length))).map(([x,y])=>[cx+x*scale*beat,cy-y*scale*beat]);path(points,'#150a1b',Math.max(.5,8*u),decor);path(points,'#39102e',Math.max(.5,u),decor);if(t>=DRAW&&!reduce){for(let j=0;j<2;j++){if(bt<j*2.4)continue;const age=(bt%2.4+j*2.4)/3;if(age>=1)continue;path(curve.filter((_,i)=>i%6===0).map(([x,y])=>[cx+x*scale*(1+age*.58),cy-y*scale*(1+age*.58)]),'#ef6ca7',1,.21*(1-age)*decor)}}}
  let cursor=intro*outline.length;for(let i=0;i<Math.ceil(cursor)&&i<outline.length;i++){let p=outline[i],a=ease(cursor-i)*(t>=RETURN?landed('outline',i):before);text(cx+p.x*scale*beat,cy-p.y*scale*beat,p.value,(W<600||H<600?13*u:Math.max(7,Math.floor(13*u))),'#ff9cc8',a,'outline')}
  if(intro<1){let i=Math.min(outline.length-1,Math.floor(cursor)),a=outline[i],b=outline[(i+1)%outline.length],q=cursor-i,x=cx+mix(a.x,b.x,q)*scale,y=cy-mix(a.y,b.y,q)*scale;dot(x,y,5*u,'#ff8bc5',.18);dot(x,y,1.7*u,'#ffe0f2')}
- const fill=fillProgress()*fillLength;for(let i=0;i<words.length;i++){let p=words[i];if(p.start>fill||t<FILL_START)break;let a=t>=RETURN?landed('word',i):before;if(a<=0)continue;let age=(fill-p.start)*FILL/Math.max(1,fillLength)+Math.max(0,t-FILL_END);a*=ease(age/.25);const fillColor=colorMix('#ed4d9e','#ffb3db',Math.round((1+Math.sin(p.y*.15+p.x*.07))/2*24)/24);if(fill>=p.end){text(cx+p.x*scale*beat,cy-p.y*scale*beat,p.value,p.size,fillColor,a,'fill',p.width*scale)}else{let written=fill-p.start,widths=p.prefix.map(x=>x.width),j=upper(widths,written),left=p.x-p.width/2;if(j<p.prefix.length){let next=p.prefix[j],prev=j?p.prefix[j-1].width:0;let fa=ease((written-prev)/Math.max(.001,next.width-prev));text(cx+(left+next.width/2)*scale*beat,cy-p.y*scale*beat,next.value,p.size,'#ffe3f3',a*fa,'fill',next.width*scale)}if(j){let pfx=p.prefix[j-1];text(cx+(left+pfx.width/2)*scale*beat,cy-p.y*scale*beat,pfx.value,p.size,fillColor,a,'fill',pfx.width*scale)}}}
- if(t>=FILL_START&&t<FILL_END){let i=Math.min(words.length-1,upper(words.map(p=>p.end),fill)),p=words[i];if(p){let x=p.x-p.width/2,y=p.y;if(fill>=p.start)x+=fill-p.start;else if(i){let prev=words[i-1],q=ease((fill-prev.end)/Math.max(.001,p.start-prev.end));x=mix(prev.x+prev.width/2,x,q);y=mix(prev.y,y,q)}dot(cx+x*scale*beat,cy-y*scale*beat,5*u,'#ffd1ec',.16);dot(cx+x*scale*beat,cy-y*scale*beat,1.4*u,'#ffe0f2')}}
+ drawHeartFill(beat,before);
  if(t<DRAW){let a=clamp((t-1.5)/2)*(1-ease((t-DRAW+1)));text(cx,cy-24*u,'Ang',Math.max(26,Math.floor(66*u)),'#ffe0f2',a,'name');text(cx,cy+34*u,'อัง',Math.max(16,Math.floor(24*u)),'#ffcfdf',a);text(cx,cy+77*u,'every beat, always you.',Math.max(10,Math.floor(12*u)),'#ffc3d8',a)}
 
 }
