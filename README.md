@@ -39,7 +39,14 @@ The web animation uses transparent text artwork rendered from Sukhumvit Set,
 Avenir Next and italic Times New Roman on the original Mac, plus measured Tk
 text widths and line spacing. Visitors do not need those system fonts. No
 proprietary font files are included. Sarabun is an OFL fallback for touch controls.
-The original procedural galaxy texture is exported from Python.
+The web galaxy uses a 1536px procedural texture with baked spiral dust lanes,
+star-forming knots and 95,000 stars. Only 96 accent stars twinkle dynamically,
+keeping the finer detail out of the animation's per-frame generation work.
+Regenerate it with the same Pillow environment:
+
+```sh
+python3 scripts/export-galaxy.py
+```
 
 After changing fixed text, regenerate the artwork on the original Mac:
 
