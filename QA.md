@@ -24,7 +24,7 @@ Those choices changed typography, packing, heart scale and placement.
 - Small/short screens retain a proportional fit and visible touch controls.
   Landscape closing text was visually checked after fixing an overlap.
 
-## Native layout comparison
+## Original viewport-dependent baseline (before fixed layout)
 
 All word strings, positions, widths and integer font sizes compared against
 LoveUniverse.prepare_fill(), called directly in the original Tk interpreter.
@@ -53,6 +53,24 @@ All 20 languages present at every size above.
   transition: median 8.3ms, p95 8.4ms, maximum 9.3ms. This is a local observation,
   not a frame-rate guarantee for other hardware.
 
-The desktop geometry is matched numerically. CoreText/Tk antialiasing and
+The original 1000x900 reference geometry is matched numerically. CoreText/Tk antialiasing and
 raster scaling can still differ slightly. Phones intentionally use an adapted
 fit; accessible DOM copies remain available to screen readers.
+
+## Consistent interior layout
+
+The interior now uses the native 1000x900 layout at a 9-point reference size
+for all viewports. Word widths, line spacing, and pen distances are computed in
+heart coordinates; font size is 9*unit with no integer rounding. This replaces
+the viewport-dependent counts in the historical table above. The expected
+current count is 193 words at every viewport, with the same normalized word
+positions, order, writing path and timing. Heart projection still fits the
+viewport, and small screens retain their existing fit and touch controls.
+
+Verified fixed layout at 1000x900, 1512x950, 1512x840, 1920x1080,
+1280x720, 768x1024, 600x840, 599x840, 390x844, 320x568 and 844x390.
+All had identical normalized word arrays (193 words, 20 languages), a constant
+9-point reference font ratio, and the same pen position at t=20. Resizing during
+playback preserved progress. Fullscreen entry through the real button and exit
+with Escape preserved both layout and progress; Escape is handled even while
+that button retains focus.

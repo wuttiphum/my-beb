@@ -14,7 +14,9 @@ python3 -m http.server 4173 --directory dist
 
 Open http://localhost:4173. Use the buttons or Space to pause, R to replay,
 and touch/click for sparks. Small screens adapt the layout; desktop geometry
-and text measurements follow the original Tk animation.
+and text measurements follow the original Tk animation. Interior lettering uses
+one fixed 1000x900 reference layout, so resizing/fullscreen preserves word order,
+spacing, and writing progress while scaling the heart as a whole.
 
 `vercel.json` configures **Other**, an empty build/install command, and `dist`
 as the output directory. Import this repository into Vercel with the repository
